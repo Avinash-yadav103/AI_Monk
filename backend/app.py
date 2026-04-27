@@ -88,6 +88,20 @@ def create_app():
                 'Example: mysql+pymysql://root:your_password@localhost:3306/tagtree_db'
             ) from error
 
+    @app.get('/')
+    def home():
+        return jsonify(
+            {
+                'message': 'AIMonk Flask backend is running.',
+                'endpoints': [
+                    {'method': 'GET', 'path': '/api/health'},
+                    {'method': 'GET', 'path': '/api/trees'},
+                    {'method': 'POST', 'path': '/api/trees'},
+                    {'method': 'PUT', 'path': '/api/trees/<id>'},
+                ],
+            }
+        )
+
     @app.get('/api/health')
     def health():
         return jsonify({'status': 'ok'})
@@ -133,6 +147,18 @@ def create_app():
         db.session.commit()
 
         return jsonify(record.to_dict())
+
+    @app.errorhandler(404)
+    def not_found(_error):
+        return (
+            jsonify(
+                {
+                    'error': 'Route not found.',
+                    'hint': 'Use /api/health or /api/trees endpoints.',
+                }
+            ),
+            404,
+        )
 
     return app
 
