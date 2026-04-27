@@ -71,6 +71,7 @@ def extract_tree_payload(payload):
 
 def create_app():
     app = Flask(__name__)
+    app.config['DB_READY'] = True
 
     db_url = os.getenv('DATABASE_URL', 'mysql+pymysql://root:password@localhost:3306/tagtree_db')
     app.config['SQLALCHEMY_DATABASE_URI'] = db_url
@@ -82,11 +83,8 @@ def create_app():
     with app.app_context():
         try:
             db.create_all()
-        except OperationalError as error:
-            raise RuntimeError(
-                'Database connection failed. Check DATABASE_URL in backend/.env and ensure MySQL is running. '
-                'Example: mysql+pymysql://root:your_password@localhost:3306/tagtree_db'
-            ) from error
+        except OperationalError:
+            app.config['DB_READY'] = False
 
     @app.get('/')
     def home():
@@ -104,15 +102,32 @@ def create_app():
 
     @app.get('/api/health')
     def health():
-        return jsonify({'status': 'ok'})
+        return jsonify({'status': 'ok', 'dbReady': app.config['DB_READY']})
+
+    def db_unavailable_response():
+        return (
+            jsonify(
+                {
+                    'error': 'Database is not reachable.',
+                    'hint': 'Set a valid DATABASE_URL in Vercel backend environment variables.',
+                }
+            ),
+            503,
+        )
 
     @app.get('/api/trees')
     def get_trees():
+        if not app.config['DB_READY']:
+            return db_unavailable_response()
+
         records = TreeRecord.query.order_by(TreeRecord.id.asc()).all()
         return jsonify([record.to_dict() for record in records])
 
     @app.post('/api/trees')
     def create_tree():
+        if not app.config['DB_READY']:
+            return db_unavailable_response()
+
         payload = request.get_json(silent=True)
         if payload is None:
             return jsonify({'error': 'JSON body is required.'}), 400
@@ -130,6 +145,9 @@ def create_app():
 
     @app.put('/api/trees/<int:tree_id>')
     def update_tree(tree_id):
+        if not app.config['DB_READY']:
+            return db_unavailable_response()
+
         payload = request.get_json(silent=True)
         if payload is None:
             return jsonify({'error': 'JSON body is required.'}), 400
